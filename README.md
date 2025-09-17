@@ -1,4 +1,4 @@
-# Hybrid Learning System: In-Context Learning & Supervised Fine-Tuning
+# Hybrid Learning System: In-Context Learning & (semi) Supervised Fine-Tuning
 
 ## Complete Implementation Guide
 
