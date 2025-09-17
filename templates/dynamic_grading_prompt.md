@@ -7,15 +7,18 @@
 Evaluate answers using these **mandatory requirements**:
 
 ### 1. Step Completeness (40% weight)
+
 - **Required steps present**: All steps from source of truth must be included
 - **No extra steps**: Only steps from source of truth are allowed
 - **Deduction**: -0.4 for each missing required step, -0.2 for each extra step
 
 ### 2. Logical Order (30% weight)  
+
 - Steps must follow the exact sequence from source of truth
 - **Deduction**: -0.3 for incorrect ordering
 
 ### 3. Accuracy & Clarity (30% weight)
+
 - Steps must match source of truth wording closely
 - Steps must be actionable and unambiguous
 - **Deduction**: -0.1 for each unclear or inaccurate step

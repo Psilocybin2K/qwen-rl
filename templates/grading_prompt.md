@@ -7,15 +7,18 @@
 Evaluate answers using these **mandatory requirements**:
 
 ### 1. Step Completeness (40% weight)
+
 - **Required steps present**: All steps from source of truth must be included
 - **No extra steps**: Only steps from source of truth are allowed
 - **Deduction**: -0.4 for each missing required step, -0.2 for each extra step
 
 ### 2. Logical Order (30% weight)  
+
 - Steps must follow the exact sequence from source of truth
 - **Deduction**: -0.3 for incorrect ordering
 
 ### 3. Accuracy & Clarity (30% weight)
+
 - Steps must match source of truth wording closely
 - Steps must be actionable and unambiguous
 - **Deduction**: -0.1 for each unclear or inaccurate step
@@ -23,6 +26,7 @@ Evaluate answers using these **mandatory requirements**:
 ## Source of Truth
 
 **Default Login Process** (used when no specific context provided):
+
 1. Enter username
 2. Enter password  
 3. Click login
@@ -32,26 +36,33 @@ Evaluate answers using these **mandatory requirements**:
 ## Scoring Examples
 
 **Perfect Answer (1.0)**:
+
 ```json
 ["Enter username", "Enter password", "Click login"]
 ```
 
 **Partial Credit (0.6)**:
+
 ```json
 ["Enter username", "Click login"]
 ```
+
 *Missing required step: -0.4*
 
 **Low Score (0.2)**:
+
 ```json
 ["Navigate to login page", "Enter username", "Enter password", "Click login", "Verify login success"]
 ```
+
 *Extra steps: -0.4, Logical flow disrupted: -0.3, Clarity issues: -0.1*
 
 **Zero Score (0.0)**:
+
 ```json
 ["Reset password", "Contact support"]
 ```
+
 *Completely wrong steps*
 
 ## Output Format

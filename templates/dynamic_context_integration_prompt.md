@@ -6,7 +6,8 @@
 
 **Query**: {query}
 
-**Instructions**: 
+**Instructions**:
+
 - Use the business context to understand the domain
 - Generate steps specific to this context
 - Follow the established format and style
