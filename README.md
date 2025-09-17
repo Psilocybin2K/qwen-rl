@@ -423,32 +423,32 @@ flowchart LR
 
 ```mermaid
 graph TD
-    subgraph "Input Processing"
-        A[User Query: "How to login?"] --> B[Template Loading]
-        B --> C[Few-Shot Examples Addition]
+    subgraph InputProcessing["Input Processing"]
+        A["User Query"] --> B["Template Loading"]
+        B --> C["Few-Shot Examples Addition"]
     end
     
-    subgraph "Generation Phase"
-        C --> D[Qwen Model Processing]
-        D --> E[ChatML Format]
-        E --> F[Beam Search Generation]
-        F --> G[Response Extraction]
+    subgraph GenerationPhase["Generation Phase"]
+        C --> D["Qwen Model Processing"]
+        D --> E["ChatML Format"]
+        E --> F["Beam Search Generation"]
+        F --> G["Response Extraction"]
     end
     
-    subgraph "Evaluation Phase"
-        G --> H[Multi-Strategy Parsing]
-        H --> I[SmoLAgents Grading]
-        I --> J[Exact Match Check]
-        J --> K[Combined Success Score]
+    subgraph EvaluationPhase["Evaluation Phase"]
+        G --> H["Multi-Strategy Parsing"]
+        H --> I["SmoLAgents Grading"]
+        I --> J["Exact Match Check"]
+        J --> K["Combined Success Score"]
     end
     
-    subgraph "Learning Phase"
-        K --> L{Performance Adequate?}
-        L -->|Yes| M[Success - Complete]
-        L -->|No| N[Fine-Tuning Required]
-        N --> O[Create Teaching Data]
-        O --> P[Supervised Training]
-        P --> Q[Model Update]
+    subgraph LearningPhase["Learning Phase"]
+        K --> L{"Performance Adequate"}
+        L -->|Yes| M["Success - Complete"]
+        L -->|No| N["Fine-Tuning Required"]
+        N --> O["Create Teaching Data"]
+        O --> P["Supervised Training"]
+        P --> Q["Model Update"]
         Q --> D
     end
 ```
@@ -577,22 +577,6 @@ flowchart LR
 - **Consistency**: Standardized test step generation
 - **Quality**: High-accuracy outputs with validation
 - **Scalability**: Extensible to multiple test scenarios
-
----
-
-## 🔮 Future Enhancements
-
-### Immediate Improvements
-
-- Dynamic few-shot example selection
-- Multi-task training across different test types
-- Advanced reward shaping for nuanced feedback
-
-### Long-term Vision
-
-- Active learning for optimal example selection
-- Federated learning across multiple domains
-- Real-time adaptation to new testing scenarios
 
 ---
 
