@@ -1,4 +1,4 @@
-# Hybrid Learning System: In-Context Learning & (semi) Supervised Fine-Tuning
+# RL-Based Structured Response Generation System
 
 ## Complete Implementation Guide
 
@@ -6,15 +6,16 @@
 
 ## 🎯 Executive Summary
 
-This system implements a **hybrid learning approach** for automated response generation across any domain, combining in-context learning (few-shot prompting) with supervised fine-tuning. The solution uses the Qwen language model as the primary generator and Azure OpenAI as an external grader to create a robust learning feedback loop.
+This system implements a **pure reinforcement learning approach** for training language models to generate structured responses from fact-based question-answering datasets. The solution uses the Qwen language model as the RL agent and Azure OpenAI GPT-4.1 as an independent reward evaluator, creating a domain-agnostic learning system that improves through interaction rather than supervised training.
 
 ### Key Innovation
 
-- **Dual Learning Strategy**: In-context learning for immediate improvement + supervised fine-tuning for permanent knowledge acquisition
-- **External Grader System**: Uses GPT-4.1 as an independent evaluator
-- **Template-Based Architecture**: Modular, maintainable prompt management
-- **Context-Aware Generation**: Dynamic adaptation to different business domains
-- **Domain Agnostic**: Applicable to any structured response generation task
+- **Domain-Agnostic Architecture**: Works with any fact-based QNA dataset (test cases, procedures, instructions, etc.)
+- **Pure RL Learning**: Agent learns from quality rewards without ground truth in prompts
+- **Separation of Concerns**: States, actions, and rewards are cleanly separated
+- **Independent Evaluation**: AI-based reward function assesses quality without comparison
+- **Template-Based Prompts**: Zero data embedding - instructions only
+- **Policy Gradient Learning**: REINFORCE and PPO algorithms for continuous improvement
 
 ---
 
@@ -22,540 +23,470 @@ This system implements a **hybrid learning approach** for automated response gen
 
 ```mermaid
 graph TB
-    subgraph "Core Components"
-        A[QwenResponseGenerator] --> B[Template Loader]
-        C[SmoLAgentsGrader] --> D[Azure OpenAI]
-        E[Training Coordinators] --> F[Few-Shot Trainer]
-        E --> G[Supervised Fine-Tuning Trainer]
+    subgraph "RL Components"
+        A[RLEnvironment] --> B[State Provider]
+        A --> C[Ground Truth Storage]
+        D[RLAgent] --> E[Action Generator]
+        F[RewardFunction] --> G[Quality Evaluator]
+        H[RLTrainer] --> I[Policy Updater]
     end
     
-    subgraph "Learning Pipeline"
-        H[Input Query] --> I[Template Loading]
-        I --> J[In-Context Examples]
-        J --> K[Model Generation]
-        K --> L[Response Parsing]
-        L --> M[External Grading]
-        M --> N[Success Evaluation]
-        N --> O[Learning Feedback]
+    subgraph "RL Training Loop"
+        J[Environment.get_state] --> K[Agent.act]
+        K --> L[Generated Steps]
+        L --> M[RewardFunction.compute_reward]
+        M --> N[Trajectory Storage]
+        N --> O[Policy Update REINFORCE/PPO]
     end
     
-    subgraph "Adaptive Learning Loop"
-        P[Performance Analysis] --> Q{Success Threshold Met?}
-        Q -->|Yes| S[Learning Complete]
-        Q -->|No| R[Supervised Fine-Tuning]
-        R --> T[Model Weight Updates]
-        T --> P
+    subgraph "Data Separation"
+        P[Query + Context] -->|State| K
+        Q[Ground Truth] -->|Stored Separately| C
+        Q -.->|Logging Only| N
+        R[No Ground Truth] -->|Grading| M
     end
     
-    A --> K
-    C --> M
-    F --> J
-    G --> R
+    A --> J
+    D --> K
+    F --> M
+    H --> O
 ```
 
 ---
 
-## 📋 Component Deep Dive
+## 📋 Core RL Components
 
-### 1. Dynamic Template Loader System 📄
+### 1. RL Environment 🌍
 
-The foundation of our modular prompt management system with context-aware capabilities.
+**Purpose**: Provides states and manages ground truth separately from the agent.
 
-#### **Purpose & Design**
+#### **Design Philosophy**
 
-- **Separation of Concerns**: Keeps prompts separate from code logic
-- **Easy Maintenance**: Modify prompts without code changes
-- **Dynamic Variable Substitution**: Context-aware prompt generation
-- **Multi-Domain Support**: Business context integration
+- **Clean State Provision**: States contain only observable information (query + context)
+- **Separate Ground Truth**: Correct answers stored in environment, not exposed to agent
+- **Episode Management**: Handles state resets and sampling
 
-#### **Implementation Structure**
+#### **Implementation**
 
 ```mermaid
 classDiagram
-    class DynamicTemplateLoader {
-        +templates_dir: Path
-        +load_template(name: str) str
-        +format_template(name: str, **kwargs) str
-        +format_grading_prompt(context, correct_answer, generated_answer) str
-        +format_few_shot_prompt(context, example_query, example_answer) str
-        +format_user_query_with_context(query, context) str
+    class RLEnvironment {
+        +dataset_manager: DatasetManager
+        +dataset: List[Dict]
+        +get_state(index: int) Dict
+        +get_ground_truth(index: int) List[str]
+        +reset(index: int) Dict
+        +sample() int
+        +size() int
     }
     
-    class Templates {
-        system_prompt_few_shot.md
-        system_prompt_regular.md
-        system_prompt_teaching.md
-        dynamic_grading_prompt.md
-        context_aware_user_query.md
-        multi_query_training_prompt.md
+    class State {
+        query: str
+        context: str
     }
     
-    DynamicTemplateLoader --> Templates
+    class GroundTruth {
+        answer: List[str]
+    }
+    
+    RLEnvironment --> State : provides
+    RLEnvironment --> GroundTruth : stores separately
 ```
-
-#### **Template Types & Usage**
-
-| Template Type | Purpose | Variables | Example Usage |
-|---------------|---------|-----------|---------------|
-| `dynamic_few_shot_prompt` | Context-aware in-context examples | `{context}`, `{example_query}`, `{example_answer}` | Few-shot learning with domain context |
-| `system_prompt_regular` | Basic system instructions | None | Standard generation |
-| `system_prompt_teaching` | Supervised learning mode | None | Fine-tuning preparation |
-| `dynamic_grading_prompt` | Context-aware evaluation | `{context}`, `{correct_answer}`, `{generated_answer}` | Domain-specific grading |
-| `context_aware_user_query` | Context-integrated queries | `{query}`, `{context}` | Business domain integration |
 
 #### **Key Methods**
 
-```python
-# Load and format context-aware few-shot prompt
-prompt = loader.format_few_shot_prompt(
-    context="E-commerce domain",
-    example_query="How to complete the process?",
-    example_answer='["Step 1", "Step 2", "Step 3"]'
-)
+| Method | Returns | Purpose |
+|--------|---------|---------|
+| `get_state(index)` | `{query, context}` | Get observable state for agent |
+| `get_ground_truth(index)` | `List[str]` | Get correct answer (logging only) |
+| `reset(index)` | `{query, context}` | Reset to specific state |
+| `sample()` | `int` | Random state index |
 
-# Dynamic grading with business context
-grading_prompt = loader.format_grading_prompt(
-    context="Specific business process",
-    correct_answer='["Expected step 1", "Expected step 2"]',
-    generated_answer='["Generated step 1", "Generated step 2"]'
-)
+#### **Critical Design**
+
+```python
+def get_state(self, index: int) -> Dict[str, str]:
+    """Get state (query, context) - NO answer included."""
+    entry = self.dataset[index]
+    return {
+        "query": entry["query"],
+        "context": entry["context"]
+        # Explicitly NO answer here - maintained separately
+    }
 ```
 
 ---
 
-### 2. Context-Aware Response Generator 🤖
+### 2. RL Agent 🤖
 
-The core language model responsible for generating structured responses with business context awareness.
+**Purpose**: Generates structured responses (actions) from queries and context (states) using instruction-only prompts.
 
-#### **Model Architecture**
+#### **Agent Architecture**
 
 ```mermaid
 graph LR
     subgraph "Input Processing"
-        A[Natural Language Query + Context] --> B[Dynamic Template Loading]
-        B --> C[Context-Aware Formatting]
-        C --> D[ChatML Formatting]
+        A[State: Query + Context] --> B[Template Loading]
+        B --> C[Prompt Formatting]
+        C --> D[ChatML Structure]
     end
     
     subgraph "Model Generation"
         D --> E[Qwen2.5-0.5B-Instruct]
-        E --> F[Beam Search Decoding]
+        E --> F[Beam Search]
         F --> G[Token Generation]
     end
     
     subgraph "Output Processing"
         G --> H[Response Extraction]
-        H --> I[Multi-Strategy Parsing]
-        I --> J[Structured Response]
+        H --> I[Action Parsing]
+        I --> J[Structured Response List]
     end
 ```
 
-#### **Configuration Parameters**
+#### **Configuration**
 
 | Parameter | Value | Purpose |
 |-----------|-------|---------|
-| Model | `Qwen2.5-0.5B-Instruct` | Base language model |
-| Max Tokens | 512 | Context window limit |
-| New Tokens | 128 | Generation limit |
-| Beam Search | 3 beams | Diverse generation |
-| Temperature | 0.7 | Balanced creativity |
-| Format | ChatML | Conversation structure |
+| Model | `Qwen2.5-0.5B-Instruct` | Base LLM |
+| Max Length | 512 tokens | Input context |
+| Max New Tokens | 128 tokens | Generation limit |
+| Num Beams | 3 | Beam search |
+| Temperature | 0.7 | Sampling diversity |
 
-#### **Generation Modes**
-
-##### **In-Context Learning Mode** 🎯
+#### **Action Generation**
 
 ```python
-# Uses contextual examples for improved performance
-result = generator.generate_response(query_data, use_few_shot=True)
-```
-
-**Benefits:**
-
-- Immediate performance improvement
-- No model weight modifications
-- Preserves original capabilities
-- Fast iteration cycles
-- Context-aware example selection
-
-##### **Regular Mode** 📝
-
-```python
-# Standard generation without examples
-result = generator.generate_response(query_data, use_few_shot=False)
-```
-
-**Use Cases:**
-
-- Baseline performance measurement
-- Comparison studies
-- General-purpose generation
-
-#### **Context-Aware Processing**
-
-```python
-def _prepare_context_prompt(self, query_data: Dict, use_few_shot: bool, few_shot_example: Dict = None) -> tuple[str, str]:
-    """Prepare context-aware system and user prompts"""
-    query = query_data["query"]
-    context = query_data.get("context", "")
+def act(self, state: Dict[str, str], max_new_tokens: int = 128) -> List[str]:
+    """Generate action from state - NO ground truth access.
     
-    if use_few_shot and context:
-        # Use dynamic context-aware few-shot prompting
-        selected_example = self._select_few_shot_example(query_data)
-        system_content = self.template_loader.format_few_shot_prompt(
-            context, selected_example["query"], selected_example["answer"]
-        )
-        user_content = self.template_loader.format_user_query_with_context(query, context)
-    else:
-        # Standard prompting approach
-        system_content = self.template_loader.load_template("system_prompt_regular")
-        user_content = self.template_loader.format_template("user_query_template", query=query)
+    Args:
+        state: {"query": "...", "context": "..."}
+        
+    Returns:
+        List[str]: Generated structured response (e.g., steps, items, procedures)
+    """
+    # Build prompt with ONLY instructions
+    prompt = self._build_prompt(state["query"], state["context"])
     
-    return system_content, user_content
+    # Generate response
+    response = self._generate(prompt, max_new_tokens)
+    
+    # Parse into structured action
+    return self._parse_action(response)
 ```
 
-#### **Output Structure**
+#### **Template System**
 
-```python
-{
-    "response": ["Step 1", "Step 2", "Step 3"],
-    "raw_text": "Full generated response...",
-    "response_text": "Cleaned assistant response...",
-    "formatted_answer": '["Step 1", "Step 2", "Step 3"]',
-    "context_used": "Business domain context"
-}
-```
+The agent uses **instruction-only templates** with zero data embedding:
+
+- `system_prompt_generic.md`: Role and output format instructions
+- `user_query_template.md`: Query formatting (variables: `{query}`, `{context}`)
+
+**Critical**: No examples, no correct answers, no dataset content in templates.
 
 ---
 
-### 3. Context-Aware SmoLAgents Grader System 🎯
+### 3. Reward Function 🎯
 
-External evaluation system providing objective, domain-specific performance assessment.
+**Purpose**: Evaluate action quality using AI grader WITHOUT ground truth comparison.
 
-#### **Architecture Overview**
+#### **Reward Architecture**
 
 ```mermaid
 graph TB
-    subgraph "Grader Components"
-        A[Azure OpenAI Client] --> B[GPT-4.1 Model]
-        C[Tool Calling Agent] --> D[SmoLAgents Framework]
-        E[Dynamic Template System] --> F[Context-Aware Grading]
+    subgraph "Grading Components"
+        A[Azure OpenAI Client] --> B[GPT-4.1]
+        C[ToolCallingAgent] --> D[SmoLAgents Framework]
+        E[Template System] --> F[Quality-Based Grading]
     end
     
     subgraph "Evaluation Process"
-        G[Generated Answer + Context] --> H[Dynamic Template Formatting]
-        H --> I[Agent Execution]
-        I --> J[JSON Response]
-        J --> K[Score Extraction]
-        K --> L[Normalized Score 0.0-1.0]
+        G[Generated Answer] --> H[Template Formatting]
+        I[Context] --> H
+        J[Query] --> H
+        H --> K[Agent Execution]
+        K --> L[JSON Response]
+        L --> M[Score Extraction]
+        M --> N[Reward: 0.0-1.0]
     end
     
-    A --> I
-    C --> I
+    O[NO Ground Truth] -.-> H
+    
+    A --> K
+    C --> K
     E --> H
 ```
 
-#### **Context-Aware Grading Criteria**
+#### **Grading Criteria**
 
-| Aspect | Weight | Description |
-|--------|--------|-------------|
-| **Domain Accuracy** | 40% | Correctness within business context |
-| **Process Completeness** | 30% | Coverage of domain-specific workflow |
-| **Terminology Clarity** | 20% | Appropriate domain language usage |
-| **Logical Sequence** | 10% | Context-appropriate ordering |
+The AI grader evaluates based on **quality**, not comparison:
 
-#### **Dynamic Grading Implementation**
+| Criterion | Weight | Assessment Method |
+|-----------|--------|-------------------|
+| Completeness | 40% | Are all necessary items/steps present based on context? |
+| Logical Order | 30% | Do items follow an appropriate sequence? |
+| Accuracy & Clarity | 30% | Are items actionable, clear, and unambiguous? |
+
+**Note**: These criteria adapt to the domain—what constitutes "complete" or "logical order" depends on the context provided in the dataset.
+
+#### **Key Difference from Traditional Grading**
 
 ```python
-def grade_response(self, generated_answer: str, context: str = "", correct_answer: str = "") -> float:
-    """Grade with optional context awareness"""
+def compute_reward(self, generated_answer: str, context: str, query: str) -> float:
+    """Compute reward using AI grader - NO ground truth in prompt.
     
-    if context and correct_answer:
-        # Use dynamic context-aware grading
-        prompt = self.template_loader.format_grading_prompt(
-            context=context,
-            correct_answer=correct_answer,
-            generated_answer=generated_answer
-        )
-    else:
-        # Use static grading for backward compatibility
-        prompt = self.template_loader.format_template("grading_prompt", generated_answer=generated_answer)
+    Evaluates quality based on:
+    - Context requirements
+    - Query intent
+    - Quality criteria
     
-    # Process grading request
-    result = self.agent.run(prompt)
-    return self._extract_accuracy_score(result)
+    Does NOT compare to correct answer.
+    """
+    prompt = self.template_loader.format_template(
+        "grading_prompt_no_ground_truth",
+        generated_answer=generated_answer,
+        context=context,
+        query=query
+        # NO correct_answer parameter
+    )
 ```
+
+#### **Grading Template Structure**
+
+The `grading_prompt_no_ground_truth.md` template instructs the grader to:
+
+1. Assess completeness based on context requirements
+2. Evaluate logical ordering for the business process
+3. Check clarity and actionability
+4. Provide systematic scoring with deductions
+5. Return JSON with analysis and accuracy score
+
+**Important**: The grader evaluates independently without seeing the "correct" answer.
 
 ---
 
-### 4. In-Context Learning Trainer 🎓
+### 4. RL Trainer 🔄
 
-Implements few-shot prompting approach for immediate performance improvement without model modification.
+**Purpose**: Implement policy-based RL algorithms for agent improvement.
 
-#### **Learning Philosophy**
-
-```mermaid
-mindmap
-    root((In-Context Learning))
-        Few-Shot Examples
-            Pattern Demonstration
-            Context Understanding
-            Immediate Application
-        No Model Updates
-            Preserved Weights
-            Rapid Iteration
-            Reversible Changes
-        Performance Gains
-            Pattern Recognition
-            Domain Adaptation
-            Task Specialization
-```
-
-#### **Training Process**
-
-```mermaid
-sequenceDiagram
-    participant T as InContext Trainer
-    participant D as Dataset Manager
-    participant G as Generator
-    participant E as Evaluator
-    participant A as Analyzer
-    
-    T->>D: Select relevant examples
-    T->>G: Format with context + examples
-    G->>G: Generate with in-context learning
-    G->>T: Return structured response
-    T->>E: Grade with context awareness
-    E->>T: Return domain-specific score
-    T->>A: Collect contextual results
-    A->>T: Performance analysis
-    
-    Note over T,A: Repeat across multiple contexts
-```
-
-#### **Context-Aware Example Selection**
-
-```python
-def _select_few_shot_example(self, current_query: Dict) -> Dict:
-    """Select relevant example from dataset based on context similarity"""
-    current_context = current_query.get("context", "").lower()
-    current_query_text = current_query.get("query", "").lower()
-    
-    all_queries = self.dataset_manager.get_all_queries()
-    
-    # Priority 1: Context keyword overlap
-    for example in all_queries:
-        example_context = example.get("context", "").lower()
-        if self._calculate_context_similarity(current_context, example_context) > 0.3:
-            return example
-    
-    # Priority 2: Query type similarity
-    for example in all_queries:
-        if self._detect_similar_action_type(current_query_text, example["query"]):
-            return example
-    
-    # Fallback: First available example
-    return all_queries[0]
-```
-
-#### **Success Metrics**
-
-| Metric | Target | Current Performance |
-|--------|--------|-------------------|
-| **Context-Aware Exact Matches** | ≥80% | Tracked per domain |
-| **High Domain Scores (≥0.9)** | ≥80% | Context-specific evaluation |
-| **Cross-Domain Success** | 4/5 tests | Multi-context criteria |
-| **Average Context Score** | ≥0.85 | Domain-weighted mean |
-
----
-
-### 5. Supervised Fine-Tuning Trainer 🔄
-
-Implements supervised learning for permanent knowledge integration with context awareness.
-
-#### **Fine-Tuning Architecture**
+#### **Training Architecture**
 
 ```mermaid
 graph TB
-    subgraph "Data Preparation"
-        A[Context + Query + Correct Answer] --> B[Training Examples]
-        B --> C[Multi-Domain Dataset Creation]
-        C --> D[20x Replication per Context]
+    subgraph "Episode Execution"
+        A[Sample State Index] --> B[Reset Environment]
+        B --> C[Agent Generates Action]
+        C --> D[Compute Reward]
+        D --> E[Store Trajectory]
     end
     
-    subgraph "Training Process"
-        D --> E[Hugging Face Trainer]
-        E --> F[Context-Aware Training Args]
-        F --> G[Gradient Updates]
-        G --> H[Updated Model Weights]
+    subgraph "Trajectory Structure"
+        F[State: query + context]
+        G[Action: test steps]
+        H[Reward: quality score]
+        I[Ground Truth: logging only]
     end
     
-    subgraph "Evaluation Loop"
-        H --> I[Multi-Context Testing]
-        I --> J[Domain-Specific Performance Check]
-        J --> K{Success Across Contexts?}
-        K -->|No| L[Additional Training]
-        K -->|Yes| M[Training Complete]
-        L --> E
+    subgraph "Policy Update"
+        J[Collect Trajectories] --> K{Algorithm?}
+        K -->|REINFORCE| L[Policy Gradient]
+        K -->|PPO| M[Clipped Objective]
+        L --> N[Model Weight Update]
+        M --> N
     end
+    
+    E --> J
 ```
 
-#### **Context-Aware Training Configuration**
+#### **Training Methods**
 
-| Parameter | Value | Rationale |
-|-----------|-------|-----------|
-| **Epochs** | 3 | Prevent overfitting across domains |
-| **Batch Size** | 1 | Memory efficiency with context |
-| **Learning Rate** | 5e-5 | Stable cross-domain convergence |
-| **Gradient Accumulation** | 4 | Effective batch size |
-| **Warmup Steps** | 10 | Smooth domain adaptation |
-| **Max Length** | 512 | Context + query preservation |
+##### **Episode Training**
 
-#### **Multi-Domain Training Example Structure**
+```python
+def train_episode(self, episode_index: int) -> Dict:
+    """Run single RL episode.
+    
+    Returns:
+        Trajectory with state, action, reward, ground_truth (logging)
+    """
+    # 1. Get state (NO answer)
+    state = self.env.reset(episode_index)
+    
+    # 2. Agent generates action
+    action = self.agent.act(state)
+    
+    # 3. Ground truth from environment (logging only)
+    ground_truth = self.env.get_ground_truth(episode_index)
+    
+    # 4. Compute reward (NO ground truth in prompt)
+    reward = self.reward_fn.compute_reward(
+        generated_answer=self._format_action(action),
+        context=state["context"],
+        query=state["query"]
+    )
+    
+    # 5. Store trajectory
+    return {
+        "state": state,
+        "action": action,
+        "reward": reward,
+        "ground_truth": ground_truth  # For validation only
+    }
+```
+
+##### **Policy Update**
+
+```python
+def update_policy(self, algorithm: str = "REINFORCE", learning_rate: float = 5e-5):
+    """Update agent policy from collected trajectories.
+    
+    Algorithms:
+        - REINFORCE: Policy gradient with returns
+        - PPO: Proximal Policy Optimization with clipped objective
+    """
+```
+
+#### **Supported Algorithms**
+
+| Algorithm | Method | Status |
+|-----------|--------|--------|
+| **REINFORCE** | Policy gradient: `∇J(θ) = E[∇log π(a|s) * G]` | Placeholder |
+| **PPO** | Clipped objective: `L(θ) = E[min(r(θ)A, clip(r(θ))A)]` | Placeholder |
+
+**Note**: Current implementation provides the infrastructure. Full policy gradient computation requires tracking log probabilities during generation.
+
+---
+
+### 5. Template System 📄
+
+**Purpose**: Manage instruction-only prompts with zero data embedding.
+
+#### **Design Philosophy**
+
+Unlike traditional template systems, this loader:
+
+- **NO dataset content**: No examples, no correct answers, no few-shot learning
+- **Instructions only**: Pure role definitions and formatting rules
+- **Simple substitution**: Only basic variables like `{query}`, `{context}`
+
+#### **Template Structure**
+
+```mermaid
+graph LR
+    A[TemplateLoader] --> B[system_prompt_generic.md]
+    A --> C[user_query_template.md]
+    A --> D[grading_prompt_no_ground_truth.md]
+    
+    B --> E[Role Definition]
+    B --> F[Output Format]
+    B --> G[Guidelines]
+    
+    C --> H[Query Variable]
+    C --> I[Context Variable]
+    
+    D --> J[Grading Criteria]
+    D --> K[Quality Assessment]
+```
+
+#### **Available Templates**
+
+| Template | Purpose | Variables |
+|----------|---------|-----------|
+| `system_prompt_generic.md` | Agent role and instructions | None |
+| `user_query_template.md` | Query formatting | `{query}`, `{context}` |
+| `grading_prompt_no_ground_truth.md` | Reward evaluation | `{generated_answer}`, `{context}`, `{query}` |
+
+#### **Implementation**
+
+```python
+class TemplateLoader:
+    """Simplified template loader - no data embedding."""
+    
+    def load_template(self, template_name: str) -> str:
+        """Load template content without examples."""
+        
+    def format_template(self, template_name: str, **kwargs) -> str:
+        """Format with simple variable substitution only."""
+```
+
+---
+
+## 🔄 RL Training Pipeline
+
+### Complete Training Flow
+
+```mermaid
+sequenceDiagram
+    participant T as Trainer
+    participant E as Environment
+    participant A as Agent
+    participant R as Reward
+    
+    loop For each episode
+        T->>E: Sample state index
+        E->>T: Return state (query, context)
+        T->>A: act(state)
+        A->>A: Generate test steps
+        A->>T: Return action (steps)
+        T->>R: compute_reward(steps, context, query)
+        R->>R: AI grader evaluation
+        R->>T: Return reward score
+        T->>E: get_ground_truth(index)
+        E->>T: Return correct answer (logging)
+        T->>T: Store trajectory
+    end
+    
+    T->>T: update_policy(REINFORCE/PPO)
+    T->>A: Update model weights
+```
+
+### Training Statistics
+
+After each batch of episodes, the trainer provides:
 
 ```python
 {
-    "text": "System prompt + Context + User query + Correct answer + EOS",
-    "query": "How to complete the process?",
-    "context": "Business process with specific requirements",
-    "correct_answer": '["Step 1", "Step 2", "Step 3", "Step 4"]',
-    "type": "context_aware_example",
-    "domain": "business_process"
+    "num_episodes": 5,
+    "average_reward": 0.742,
+    "max_reward": 0.95,
+    "min_reward": 0.45
 }
 ```
 
-#### **Adaptive Training Loop**
-
-```mermaid
-flowchart LR
-    A[Multi-Context Initial Test] --> B{Success Rate ≥80% Across Domains?}
-    B -->|No| C[Context-Aware Fine-Tuning]
-    C --> D[Test Domain-Specific Progress]
-    D --> E[Analyze Cross-Domain Results]
-    E --> B
-    B -->|Yes| F[Training Complete]
-    
-    G[Max Attempts: 5 per Domain] --> C
-```
-
 ---
 
-## 🔄 Hybrid Learning Pipeline
+## 📊 Dataset Structure
 
-### Complete Learning Flow
+### General Format
 
-```mermaid
-graph TD
-    subgraph InputProcessing["Input Processing"]
-        A["Query + Business Context"] --> B["Dynamic Template Loading"]
-        B --> C["Context-Aware Example Selection"]
-    end
-    
-    subgraph InContextPhase["In-Context Learning Phase"]
-        C --> D["Few-Shot Prompt Formation"]
-        D --> E["Model Processing"]
-        E --> F["Context-Aware Generation"]
-    end
-    
-    subgraph EvaluationPhase["Evaluation Phase"]
-        F --> G["Multi-Strategy Parsing"]
-        G --> H["Domain-Specific Grading"]
-        H --> I["Context-Aware Success Check"]
-    end
-    
-    subgraph AdaptiveLearning["Adaptive Learning Phase"]
-        I --> J{"Performance Adequate?"}
-        J -->|Yes| K["Success - Complete"]
-        J -->|No| L["Supervised Fine-Tuning Required"]
-        L --> M["Create Context-Aware Training Data"]
-        M --> N["Multi-Domain Training"]
-        N --> O["Model Weight Updates"]
-        O --> E
-    end
+The system works with **any fact-based question-answering dataset** where:
+
+- Questions have definitive, structured answers
+- Context provides domain-specific information
+- Answers can be represented as ordered lists
+
+### Dataset Schema
+
+```json
+[
+  {
+    "query": "Question or instruction",
+    "context": "Domain-specific context or requirements",
+    "answer": "[\"Response item 1\", \"Response item 2\", \"Response item 3\"]"
+  }
+]
 ```
 
-### Success Criteria Matrix
+### Field Descriptions
 
-| Test Run | Context | Exact Match | Grader Score | Combined Success | Domain Success Rate |
-|----------|---------|-------------|--------------|------------------|-------------------|
-| Test 1 | Domain A | ✅ | 0.95 | ✅ | 100% (1/1) |
-| Test 2 | Domain B | ❌ | 0.85 | ❌ | 50% (1/2) |
-| Test 3 | Domain A | ✅ | 0.92 | ✅ | 67% (2/3) |
-| Test 4 | Domain C | ✅ | 0.98 | ✅ | 75% (3/4) |
-| Test 5 | Domain A | ✅ | 0.91 | ✅ | **80% (4/5)** ✅ |
+| Field | Type | Purpose | Access |
+|-------|------|---------|--------|
+| `query` | string | User's question/instruction | State (agent sees) |
+| `context` | string | Domain context/requirements | State (agent sees) |
+| `answer` | JSON array string | Correct structured response | Ground truth (env only) |
 
----
-
-## 📊 Performance Analysis Framework
-
-### Multi-Domain Evaluation Metrics Dashboard
-
-```mermaid
-pie title Cross-Domain Result Distribution
-    "Context-Aware Exact Matches" : 50
-    "Domain-Specific High Scores" : 30
-    "Failed Cross-Domain Tests" : 20
-```
-
-### Learning Progress Tracking
-
-| Metric | Baseline | After In-Context Learning | After Supervised Fine-Tuning | Target |
-|--------|----------|---------------------------|-------------------------------|---------|
-| Single Domain Match Rate | 20% | 80% | 95% | ≥80% |
-| Cross-Domain Match Rate | 15% | 65% | 85% | ≥70% |
-| Context-Aware Average Score | 0.35 | 0.85 | 0.92 | ≥0.85 |
-| Domain Consistency | Low | Medium | High | Stable |
-| Response Time | Fast | Fast | Fast | <2s |
-
-### Success Pattern Analysis
-
-```mermaid
-xychart-beta
-    title "Learning Curve Across Multiple Domains"
-    x-axis [Iteration1, Iteration2, Iteration3, Iteration4, Iteration5]
-    y-axis "Success Rate %" 0 --> 100
-    line [15, 35, 55, 75, 85]
-```
-
----
-
-## 🎯 Target Performance Goals
-
-### Primary Objectives
-
-| Goal | Target | Measurement |
-|------|--------|-------------|
-| **Cross-Domain Consistency** | 80% success rate | 4 out of 5 tests across contexts |
-| **Context-Aware Accuracy** | Domain-specific perfect match | Context-sensitive matching |
-| **Grader Alignment** | High domain-specific scores | ≥0.9 from context-aware evaluator |
-| **Real-Time Performance** | Sub-2-second generation | Including context processing |
-
-### Success Definition
-
-```mermaid
-flowchart LR
-    A[Response + Context] --> B{Context-Aware Exact Match?}
-    B -->|Yes| C[SUCCESS ✅]
-    B -->|No| D{Domain-Specific Grader Score ≥ 0.9?}
-    D -->|Yes| C
-    D -->|No| E[FAILURE ❌]
-```
-
-**Combined Success Criteria:**
-
-- **Context-Aware Exact Match**: Generated response exactly matches domain-specific target
-- **OR High Domain Score**: External grader rates ≥0.9/1.0 with business context
-- **Threshold**: 4 out of 5 tests must succeed across different business domains
-
----
-
-## 📚 Demo Example: QA Test Case Generation
-
-This repository includes a complete demonstration of the hybrid learning system applied to **QA test case generation** for e-commerce processes.
-
-### **Dataset Structure**
-
-The demo uses `sample_dataset.json` with the following structure:
+### Example: QA Test Case Generation
 
 ```json
 [
@@ -572,104 +503,538 @@ The demo uses `sample_dataset.json` with the following structure:
 ]
 ```
 
-### **Domain-Specific Features**
+### Example: Cooking Instructions
 
-| Component | QA Test Case Adaptation |
-|-----------|------------------------|
-| **Generator Class** | `QwenTestCaseGenerator` - Specialized for generating test steps |
-| **Response Format** | JSON arrays of actionable test steps |
-| **Context Types** | E-commerce, User Management, Password Reset workflows |
-| **Evaluation Criteria** | Step completeness, logical sequence, domain accuracy |
-| **Templates** | QA-specific prompt templates in `templates/` directory |
-
-### **Business Contexts Covered**
-
-1. **E-commerce Processes**: Login, cart management, checkout workflows
-2. **User Management**: Registration, profile updates, account management
-3. **Security Operations**: Password reset, authentication, verification
-4. **Search & Discovery**: Product search, filtering, recommendation flows
-
-### **Running the Demo**
-
-```python
-# Initialize with dataset for QA test case generation
-dataset_manager = DatasetManager("sample_dataset.json")
-generator = QwenTestCaseGenerator(dataset_manager=dataset_manager)
-grader = SmoLAgentsGrader()
-
-# Run hybrid learning on QA test cases
-trainer = FewShotTeachingTrainer(generator, grader, dataset_manager)
-results = trainer.train_on_dataset(num_queries=5)
+```json
+[
+  {
+    "query": "How to make scrambled eggs?",
+    "context": "Basic breakfast cooking with standard kitchen equipment",
+    "answer": "[\"Crack eggs into bowl\", \"Whisk with fork\", \"Heat pan with butter\", \"Pour eggs in pan\", \"Stir continuously\", \"Remove when fluffy\"]"
+  }
+]
 ```
 
-### **Extending to Other Domains**
+### Example: Troubleshooting Procedures
 
-To adapt this system to other domains:
+```json
+[
+  {
+    "query": "How to fix slow internet connection?",
+    "context": "Home WiFi network with router and modem",
+    "answer": "[\"Restart router\", \"Check cable connections\", \"Run speed test\", \"Contact ISP if issue persists\"]"
+  }
+]
+```
 
-1. **Replace Dataset**: Create domain-specific query/context/answer triplets
-2. **Update Templates**: Modify prompt templates for your domain terminology
-3. **Adjust Grading**: Configure evaluation criteria for your response format
-4. **Customize Parsing**: Adapt response parsing for your output structure
+### Example: Learning Procedures
 
-**Example domains**: Code generation, content creation, process documentation, customer service responses, technical troubleshooting, etc.
+```json
+[
+  {
+    "query": "How to solve quadratic equations?",
+    "context": "High school algebra curriculum",
+    "answer": "[\"Write equation in standard form\", \"Identify a, b, c coefficients\", \"Apply quadratic formula\", \"Simplify results\"]"
+  }
+]
+```
 
----
+### Critical Design
 
-## 🚀 Implementation Highlights
+- **Agent sees**: `query` + `context` (state)
+- **Agent never sees**: `answer` (ground truth)
+- **Reward function sees**: Generated answer + `context` + `query` (NO ground truth)
+- **Environment stores**: All three fields separately
 
-### Key Innovation Points
+### Domain Applicability
 
-1. **Hybrid Learning Strategy**
-   - In-context learning for immediate domain adaptation
-   - Supervised fine-tuning for permanent cross-domain knowledge
-   - Graceful fallback between approaches
+This system works well for domains requiring:
 
-2. **Context-Aware External Evaluation**
-   - Independent grader using domain-specific context
-   - Reduces bias through business context integration
-   - Provides objective, domain-relevant performance metrics
+- ✅ Sequential steps or procedures
+- ✅ Ordered lists of items
+- ✅ Structured responses
+- ✅ Fact-based answers (not creative/subjective)
 
-3. **Dynamic Template-Based Architecture**
-   - Context-aware prompt management
-   - Easy experimentation with domain-specific approaches
-   - Clear separation between business logic and prompts
+Examples:
 
-4. **Multi-Domain Dataset Support**
-   - Business context integration
-   - Cross-domain example selection
-   - Domain-specific performance tracking
-
-### Technical Achievements
-
-- **Hybrid Model Integration**: Seamless Qwen + Azure OpenAI workflow with context awareness
-- **Comprehensive Error Handling**: Multi-domain exception management
-- **Advanced Performance Tracking**: Domain-specific metrics and cross-context analysis
-- **Scalable Design**: Easy extension to new business domains and use cases
-
----
-
-## 📚 Learning Approaches Summary
-
-### **In-Context Learning (Few-Shot)**
-
-- **What**: Providing examples within the prompt context
-- **When**: Immediate performance improvement needed
-- **Benefit**: Fast adaptation without model changes
-- **Limitation**: Context window constraints
-
-### **Supervised Fine-Tuning**
-
-- **What**: Training model weights on correct examples
-- **When**: Permanent knowledge integration required
-- **Benefit**: Persistent improvements across sessions
-- **Limitation**: Requires computational resources for training
-
-### **Hybrid Approach**
-
-- **Strategy**: Start with in-context learning, escalate to fine-tuning if needed
-- **Advantage**: Best of both worlds - speed and permanence
-- **Implementation**: Automatic fallback based on performance thresholds
+- Test case generation
+- Cooking recipes
+- Assembly instructions
+- Troubleshooting guides
+- Standard operating procedures
+- Tutorial steps
+- Checklists
+- Process documentation
 
 ---
 
-*This system represents a flexible, domain-agnostic approach to automated response generation, combining the immediacy of in-context learning with the permanence of supervised fine-tuning to create a robust, context-aware solution for diverse business applications.*
+## 🚀 Usage Guide
+
+### Installation
+
+```bash
+# Install dependencies
+pip install torch transformers datasets smolagents openai python-dotenv
+
+# Set environment variables
+export AOAI_API_KEY="your-azure-openai-key"
+export AOAI_ENDPOINT="your-azure-openai-endpoint"
+```
+
+### Basic Usage
+
+```python
+from src.environment import RLEnvironment
+from src.agent import RLAgent
+from src.reward import RewardFunction
+from src.trainer import RLTrainer
+
+# Initialize RL components with your dataset
+env = RLEnvironment("your_dataset.json")  # Any fact-based QNA dataset
+agent = RLAgent(model_name="Qwen/Qwen2.5-0.5B-Instruct")
+reward_fn = RewardFunction()
+trainer = RLTrainer(agent, env, reward_fn)
+
+# Train on episodes
+for episode in range(5):
+    index = env.sample()
+    trajectory = trainer.train_episode(index)
+    print(f"Episode {episode}: Reward = {trajectory['reward']:.3f}")
+
+# Update policy
+trainer.update_policy(algorithm="REINFORCE", learning_rate=5e-5)
+
+# Get statistics
+stats = trainer.get_statistics()
+print(f"Average Reward: {stats['average_reward']:.3f}")
+```
+
+### Running the Demo
+
+The included demo uses QA test case generation as an example scenario:
+
+```bash
+# Run main pipeline with test case dataset
+python -m src.main
+
+# Validate structure
+python -m src.validate_refactor
+```
+
+### Using Your Own Dataset
+
+1. **Create Dataset File**: Format as JSON with `query`, `context`, `answer` fields
+2. **Point to Dataset**: `env = RLEnvironment("path/to/your/dataset.json")`
+3. **Run Training**: Use the same training code - no modifications needed
+4. **Optional Template Customization**: Adjust `system_prompt_generic.md` for domain-specific terminology
+
+---
+
+## 🎯 Key Design Principles
+
+### 1. Clean Separation of Data and Prompts
+
+**Problem**: Traditional systems embed dataset content in prompts (examples, correct answers)
+
+**Solution**:
+
+- Templates contain ONLY instructions
+- Agent never sees ground truth
+- Reward function evaluates quality independently
+
+### 2. True RL Paradigm
+
+**State → Action → Reward → Policy Update**
+
+```
+State: {query, context}
+↓
+Action: Agent generates test steps
+↓
+Reward: AI grader evaluates quality (no comparison)
+↓
+Policy Update: REINFORCE/PPO improves generation
+```
+
+### 3. Independent Quality Evaluation
+
+**Traditional Approach**: Compare generated output to correct answer
+
+**Our Approach**: Evaluate quality based on:
+
+- Completeness for the context
+- Logical ordering for the process
+- Clarity and actionability
+
+This allows the system to potentially discover better solutions than the ground truth.
+
+### 4. Modular Architecture
+
+Each component has a single responsibility:
+
+- **Environment**: State management + ground truth storage
+- **Agent**: Action generation from states
+- **Reward**: Quality evaluation
+- **Trainer**: Policy optimization
+
+---
+
+## 📈 Performance Metrics
+
+### Reward-Based Metrics
+
+Since this is an RL system, success is measured by:
+
+| Metric | Description | Target |
+|--------|-------------|--------|
+| **Average Reward** | Mean reward across episodes | ≥ 0.80 |
+| **Reward Variance** | Consistency of performance | Low variance |
+| **Max Reward** | Best episode performance | ≥ 0.90 |
+| **Learning Curve** | Reward improvement over time | Upward trend |
+
+### Quality Dimensions
+
+The AI grader evaluates on:
+
+1. **Completeness (40%)**: All necessary items present for the domain/context
+2. **Order (30%)**: Logical sequence appropriate for the task
+3. **Clarity (30%)**: Actionable, unambiguous, and well-articulated
+
+These dimensions are applied consistently across all domains, with the grader interpreting "completeness" and "order" based on the specific context provided.
+
+---
+
+## 🔬 Extending the System
+
+### Adapting to New Domains
+
+The system is **domain-agnostic by design**. To use with a new domain:
+
+1. **Create Domain Dataset**:
+
+   ```json
+   [
+     {
+       "query": "Your domain-specific question",
+       "context": "Domain requirements/context",
+       "answer": "[\"Item 1\", \"Item 2\", \"Item 3\"]"
+     }
+   ]
+   ```
+
+2. **Load and Train** (no code changes needed):
+
+   ```python
+   env = RLEnvironment("your_domain_dataset.json")
+   agent = RLAgent()
+   reward_fn = RewardFunction()
+   trainer = RLTrainer(agent, env, reward_fn)
+   trainer.train_episode(0)
+   ```
+
+3. **Optional Customization**:
+   - Update `system_prompt_generic.md` for domain-specific terminology
+   - Modify `grading_prompt_no_ground_truth.md` for domain-specific quality criteria
+
+### Example Domain Adaptations
+
+#### Software Development
+
+```json
+{
+  "query": "How to implement binary search?",
+  "context": "Python programming for sorted array",
+  "answer": "[\"Define function with array and target\", \"Initialize left and right pointers\", \"While loop until pointers meet\", \"Calculate mid point\", \"Compare mid value to target\", \"Adjust pointers\", \"Return result\"]"
+}
+```
+
+#### Medical Procedures
+
+```json
+{
+  "query": "How to perform CPR?",
+  "context": "Emergency response for unconscious adult patient",
+  "answer": "[\"Check responsiveness\", \"Call emergency services\", \"Position patient on back\", \"Place hands on center of chest\", \"Compress 2 inches deep at 100-120 bpm\", \"Give rescue breaths if trained\", \"Continue until help arrives\"]"
+}
+```
+
+#### DIY Instructions
+
+```json
+{
+  "query": "How to install a ceiling fan?",
+  "context": "Residential electrical work with standard ceiling box",
+  "answer": "[\"Turn off circuit breaker\", \"Remove old fixture\", \"Install mounting bracket\", \"Connect wires\", \"Attach fan motor\", \"Install blades\", \"Test operation\"]"
+}
+```
+
+#### Customer Service
+
+```json
+{
+  "query": "How to process a refund request?",
+  "context": "E-commerce platform with 30-day return policy",
+  "answer": "[\"Verify purchase date\", \"Check return policy eligibility\", \"Request return reason\", \"Issue RMA number\", \"Provide shipping label\", \"Process refund upon receipt\"]"
+}
+```
+
+### Applicable Domains
+
+This system excels at domains with:
+
+| ✅ Good Fit | ❌ Poor Fit |
+|------------|------------|
+| Procedural knowledge | Creative writing |
+| Ordered sequences | Subjective opinions |
+| Fact-based responses | Open-ended discussions |
+| Structured workflows | Unstructured narratives |
+| Step-by-step guides | Poetry or prose |
+| Checklists | Emotional content |
+| Instructions | Philosophical debates |
+
+### To New RL Algorithms
+
+1. **Implement Algorithm**: Add method to `RLTrainer`
+2. **Track Log Probabilities**: Modify `Agent.act()` to return log probs
+3. **Compute Gradients**: Implement policy gradient calculation
+4. **Update Weights**: Apply gradient updates to model
+
+---
+
+## 🎯 Use Cases
+
+### Current Demo: QA Test Case Generation
+
+**Domain**: Software quality assurance  
+**Query Type**: "How to [perform action]?"  
+**Response**: Ordered test steps
+
+### Other Applications
+
+1. **Process Documentation**
+   - Manufacturing procedures
+   - Standard operating procedures (SOPs)
+   - Compliance checklists
+
+2. **Educational Content**
+   - Tutorial steps
+   - Learning sequences
+   - Problem-solving procedures
+
+3. **Technical Support**
+   - Troubleshooting guides
+   - Diagnostic procedures
+   - Resolution workflows
+
+4. **Recipe Generation**
+   - Cooking instructions
+   - Assembly guides
+   - Preparation sequences
+
+5. **Administrative Workflows**
+   - Onboarding procedures
+   - Form processing steps
+   - Approval workflows
+
+All that's needed is a dataset in the standard format—the RL system handles the rest.
+
+---
+
+## 🏛️ Architecture Decisions
+
+### Why Pure RL?
+
+**Advantages**:
+
+- ✅ No supervised learning bias
+- ✅ Can discover novel solutions
+- ✅ Continuous improvement from interaction
+- ✅ Adaptable to changing requirements
+
+**Trade-offs**:
+
+- ⚠️ Slower initial learning
+- ⚠️ Requires more episodes
+- ⚠️ Needs good reward function
+
+### Why Separate Ground Truth?
+
+**Benefits**:
+
+- ✅ Agent learns from quality, not imitation
+- ✅ Reward function evaluates independently
+- ✅ Clean RL paradigm
+- ✅ Prevents data leakage
+
+### Why AI Grader?
+
+**Rationale**:
+
+- ✅ Captures nuanced quality aspects
+- ✅ More flexible than exact match
+- ✅ Domain-adaptable evaluation
+- ✅ Provides rich feedback signal
+
+---
+
+## 📚 Technical Details
+
+### Model Architecture
+
+```
+Qwen2.5-0.5B-Instruct
+├── Embedding Layer (vocab_size)
+├── Transformer Blocks (24 layers)
+├── Layer Normalization
+└── LM Head (output projection)
+```
+
+### Grader Architecture
+
+```
+Azure OpenAI GPT-4.1
+├── Tool Calling Agent (SmoLAgents)
+├── Template-Based Prompts
+├── JSON Response Parsing
+└── Score Normalization [0.0, 1.0]
+```
+
+### Training Configuration
+
+```python
+# REINFORCE (placeholder)
+learning_rate = 5e-5
+num_episodes = 5
+policy_update = "gradient ascent on log_prob * return"
+
+# PPO (placeholder)
+learning_rate = 5e-5
+clip_epsilon = 0.2
+num_episodes = 5
+policy_update = "clipped objective"
+```
+
+---
+
+## 🔍 Validation
+
+The system includes comprehensive validation:
+
+```bash
+python -m src.validate_refactor
+```
+
+**Checks**:
+
+- ✅ File structure completeness
+- ✅ Dataset format validity
+- ✅ Template content (no ground truth variables)
+- ✅ Import syntax and dependencies
+
+---
+
+## 🎓 Learning Resources
+
+### RL Concepts
+
+- **State**: Observable information (query + context)
+- **Action**: Generated test steps
+- **Reward**: Quality score from AI grader
+- **Policy**: Agent's strategy for generating actions
+- **Trajectory**: Sequence of (state, action, reward)
+- **Policy Gradient**: Method to improve policy using gradients
+
+### Algorithms
+
+- **REINFORCE**: Monte Carlo policy gradient
+  - Pros: Simple, unbiased
+  - Cons: High variance
+  
+- **PPO**: Proximal Policy Optimization
+  - Pros: More stable, lower variance
+  - Cons: More complex
+
+---
+
+## 🚧 Current Limitations & Future Work
+
+### Current State
+
+- ✅ RL infrastructure complete
+- ✅ Clean data separation
+- ✅ Independent reward evaluation
+- ⚠️ Policy update algorithms are placeholders
+
+### Future Enhancements
+
+1. **Full REINFORCE Implementation**
+   - Track log probabilities during generation
+   - Compute policy gradients
+   - Implement gradient ascent
+
+2. **PPO Implementation**
+   - Compute advantage estimates
+   - Implement clipped objective
+   - Value function training
+
+3. **Advanced Features**
+   - Experience replay buffer
+   - Baseline subtraction for variance reduction
+   - Multi-step returns
+   - Parallel environment execution
+
+---
+
+## 📝 Project Structure
+
+```
+.
+├── src/
+│   ├── __init__.py
+│   ├── environment.py          # RL Environment
+│   ├── agent.py                # RL Agent
+│   ├── reward.py               # Reward Function
+│   ├── trainer.py              # RL Trainer
+│   ├── template_loader.py      # Template System
+│   ├── main.py                 # Main Pipeline
+│   ├── validate_refactor.py    # Validation Script
+│   └── templates/
+│       ├── system_prompt_generic.md
+│       ├── user_query_template.md
+│       └── grading_prompt_no_ground_truth.md
+├── sample_dataset.json         # Demo Dataset
+├── requirements.txt            # Dependencies
+└── README.md                   # This File
+```
+
+---
+
+## 🤝 Contributing
+
+To extend or improve this system:
+
+1. Maintain separation: States ≠ Ground Truth
+2. Keep templates instruction-only
+3. Ensure reward function doesn't see ground truth
+4. Follow RL paradigm: State → Action → Reward
+5. Document design decisions
+
+---
+
+## 📄 License
+
+[Your License Here]
+
+---
+
+## 🙏 Acknowledgments
+
+- **Qwen Team**: For the excellent small language model ideal for RL fine-tuning
+- **Azure OpenAI**: For GPT-4.1 grading capabilities across diverse domains
+- **SmoLAgents**: For the tool-calling agent framework
+- **RL Research Community**: For foundational algorithms (REINFORCE, PPO)
+- **Open-Source Community**: For the transformers and datasets libraries
+
+---
+
+*This system demonstrates a clean RL architecture for training language models on structured response generation from fact-based QNA datasets. The domain-agnostic design emphasizes proper separation of concerns and independent quality evaluation without ground truth comparison in prompts. Simply provide your dataset in the standard format, and the system handles learning across any procedural or instructional domain.*
