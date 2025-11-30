@@ -3,3 +3,4 @@ smolagents
 transformers>=4.30.0
 datasets>=2.12.0
 openai
+python-dotenv>=1.0.0

@@ -1,0 +1,42 @@
+[
+  {
+    "query": "How to login?",
+    "context": "E-commerce login system with username/password authentication",
+    "answer": "[\"Enter username\", \"Enter password\", \"Click login\"]"
+  },
+  {
+    "query": "How to add item to cart?",
+    "context": "Online shopping platform with product catalog",
+    "answer": "[\"Select product\", \"Choose quantity\", \"Click add to cart\"]"
+  },
+  {
+    "query": "How to checkout?",
+    "context": "E-commerce checkout process with payment processing",
+    "answer": "[\"Review cart\", \"Enter shipping address\", \"Select payment method\", \"Confirm order\"]"
+  },
+  {
+    "query": "How to register new account?",
+    "context": "User registration system with email verification",
+    "answer": "[\"Enter email address\", \"Create password\", \"Enter personal information\", \"Click register\", \"Verify email\"]"
+  },
+  {
+    "query": "How to search for products?",
+    "context": "E-commerce search functionality with filters",
+    "answer": "[\"Enter search term\", \"Apply filters\", \"Sort results\", \"Select product\"]"
+  },
+  {
+    "query": "How to update profile?",
+    "context": "User profile management system",
+    "answer": "[\"Navigate to profile\", \"Edit information\", \"Save changes\"]"
+  },
+  {
+    "query": "How to reset password?",
+    "context": "Password recovery system with email verification",
+    "answer": "[\"Click forgot password\", \"Enter email\", \"Check email\", \"Click reset link\", \"Enter new password\", \"Confirm password\"]"
+  },
+  {
+    "query": "How to view order history?",
+    "context": "Order management system for customers",
+    "answer": "[\"Navigate to account\", \"Click order history\", \"Select order\", \"View details\"]"
+  }
+]
